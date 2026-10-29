@@ -428,6 +428,49 @@ describe("pipelineHandler", () => {
     expect(contentMock).toHaveBeenCalledWith(expect.anything(), "log/helm", expect.objectContaining({
       commandUnitNames: ["Fetch Files"],
       logKeys: ["log/helm-commandUnit:Fetch Files", "log/helm-commandUnit:Install / Upgrade"],
+      mode: "snippet",
+    }));
+  });
+
+  it("passes failed unitProgresses names for snippet preference", async () => {
+    const { resolveLogContent } = await import("../../../src/utils/log-resolver.js");
+    const contentMock = resolveLogContent as ReturnType<typeof vi.fn>;
+    contentMock.mockClear();
+
+    const exec = makeExecution({
+      status: "Failed",
+      stages: [{ id: "s1", name: "Stage1", status: "Failed", steps: [{ id: "helm", name: "Helm", status: "Failed" }] }],
+      nodeMapEntries: {
+        helm: {
+          uuid: "helm",
+          identifier: "helm",
+          name: "Helm",
+          baseFqn: "pipeline.stages.s1.spec.execution.steps.helm",
+          status: "Failed",
+          failureInfo: { message: "Install failed" },
+          logBaseKey: "log/helm",
+          unitProgresses: [
+            { unitName: "Fetch Files", status: "Success" },
+            { unitName: "Install / Upgrade", status: "Failed" },
+          ],
+          executableResponses: [
+            { taskChain: { logKeys: ["log/helm-commandUnit:Fetch Files", "log/helm-commandUnit:Install / Upgrade"] } },
+          ],
+        },
+      },
+    });
+
+    const ctx = makeContext({
+      input: { execution_id: "exec-001" },
+      registry: makePipelineRegistry(exec),
+      args: { summary: false, include_logs: true },
+    });
+
+    await pipelineHandler.diagnose(ctx);
+
+    expect(contentMock).toHaveBeenCalledWith(expect.anything(), "log/helm", expect.objectContaining({
+      failedUnitNames: ["Install / Upgrade"],
+      mode: "snippet",
     }));
   });
 
